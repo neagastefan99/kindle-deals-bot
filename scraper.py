@@ -62,6 +62,32 @@ def main() -> None:
     filtered = book_filter.apply(all_books)
     print(f"  After filtering: {len(filtered)} books", file=sys.stderr)
     
+    # --- Enrich with accurate product-page prices ---
+    # Deal page prices can differ from the actual product page (KU vs buy price,
+    # region-specific deals, dynamic pricing). Visit each product page for the
+    # real apex-pricetopay price.
+    print("💰 Fetching accurate product-page prices...", file=sys.stderr)
+    for book in filtered:
+        if not book.get("url"):
+            continue
+        try:
+            soup = scraper.fetch_html(book["url"])
+            if soup:
+                apex = soup.select_one('.apex-pricetopay-value .a-offscreen')
+                if apex and apex.text.strip():
+                    real_price = scraper._clean_price(apex.text.strip())
+                    if real_price is not None and real_price > 0:
+                        old = book.get("price")
+                        book["price"] = real_price
+                        if old != real_price:
+                            print(f"  💵 {book['title'][:50]}... ${old} → ${real_price}", file=sys.stderr)
+        except Exception:
+            pass  # keep original price if product page fails
+    
+    # Re-filter with accurate prices (some may now exceed max_price)
+    filtered = book_filter.apply(filtered)
+    print(f"  After price enrichment: {len(filtered)} books", file=sys.stderr)
+    
     # --- Deduplicate & track ---
     new_count = 0
     dropped_count = 0
