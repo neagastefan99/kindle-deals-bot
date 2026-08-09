@@ -58,52 +58,61 @@ class AmazonDealsScraper(BaseScraper):
             return []
         
         books = []
-        card_selectors = [
-            'div[data-asin]',
-            'div[data-component-type="s-search-result"]',
-            'li[data-asin]',
-        ]
         
-        cards = []
-        for sel in card_selectors:
-            cards = soup.select(sel)
-            if cards:
-                break
+        # Deal pages use .s-search-results with div[data-asin] cards.
+        # Some deal pages use different containers.
+        results_container = soup.select_one('.s-search-results')
+        
+        from bs4 import Tag
+        
+        if results_container:
+            cards = [
+                c for c in results_container.children 
+                if isinstance(c, Tag) and c.name == 'div' and c.get('data-asin')
+            ]
+        else:
+            # Fallback: find all divs with data-asin that have product content
+            cards = [
+                c for c in soup.select('div[data-asin]')
+                if c.get('data-asin') and c.select_one('h2, .a-size-medium, a[href*=\"/dp/\"]')
+            ]
         
         for card in cards[:self.max_books]:
             asin = card.get("data-asin", "")
             if not asin:
                 continue
             
-            # Title
+            # Title — deal pages use .a-size-medium.a-color-base or .a-text-normal
             title_el = (
-                card.select_one("h2 a span") or
-                card.select_one("h2 a") or
-                card.select_one(".a-link-normal span.a-text-normal")
+                card.select_one('.a-size-medium.a-color-base') or
+                card.select_one('a.a-link-normal .a-text-normal') or
+                card.select_one('h2 a span') or
+                card.select_one('h2 a')
             )
             title = self._clean_text(title_el.text) if title_el else ""
             if not title:
                 continue
             
-            # Author / byline
-            author_el = (
-                card.select_one(".a-row.a-size-base.a-color-secondary") or
-                card.select_one(".a-size-base.a-link-normal")
-            )
-            author = self._clean_text(author_el.text) if author_el else ""
+            # Author — extract "by Author Name" from card text
+            author = ""
+            raw_text = card.get_text(" ", strip=True)
+            author_match = re.search(r"by\s+([^|]+?)(?:\s*\|\s*Sold by)", raw_text)
+            if author_match:
+                author = author_match.group(1).strip()
             
-            # Price
+            # Price — use .a-offscreen inside .a-price
             price_el = (
-                card.select_one(".a-price .a-offscreen") or
-                card.select_one(".a-price-whole")
+                card.select_one('span.a-price span.a-offscreen') or
+                card.select_one('span.a-offscreen') or
+                card.select_one('span.a-price-whole')
             )
             price = None
             if price_el:
-                price_text = price_el.get("aria-label", price_el.text)
+                price_text = price_el.get("aria-label") or price_el.text
                 price = self._clean_price(price_text)
             
             # URL
-            link_el = card.select_one("a.a-link-normal[href*='/dp/']") or card.select_one("h2 a")
+            link_el = card.select_one('a.a-link-normal[href*="/dp/"]') or card.select_one('h2 a')
             url = ""
             if link_el and link_el.get("href"):
                 url = urljoin(self.base_url, link_el["href"])

@@ -24,7 +24,7 @@ def format_report(books: list[dict[str, Any]], new_count: int,
     lines.append("")
     
     for i, book in enumerate(books, 1):
-        price_str = f"${book['price']:.2f}" if book.get("price") else "N/A"
+        price_str = f"${book['price']:.2f}" if book.get("price") is not None else "N/A"
         title = book.get("title", "Unknown Title")
         author = book.get("author", "")
         url = book.get("url", "")
