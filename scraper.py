@@ -73,6 +73,7 @@ def main() -> None:
         try:
             soup = scraper.fetch_html(book["url"])
             if soup:
+                # Apex price-to-pay (the actual current buy-box price)
                 apex = soup.select_one('.apex-pricetopay-value .a-offscreen')
                 if apex and apex.text.strip():
                     real_price = scraper._clean_price(apex.text.strip())
@@ -81,6 +82,23 @@ def main() -> None:
                         book["price"] = real_price
                         if old != real_price:
                             print(f"  💵 {book['title'][:50]}... ${old} → ${real_price}", file=sys.stderr)
+                
+                # List price (the regular/print price before discount)
+                basis = soup.select_one('.apex-basisprice-value .a-offscreen')
+                if basis and basis.text.strip():
+                    list_price = scraper._clean_price(basis.text.strip())
+                    if list_price and list_price > 0:
+                        book["list_price"] = list_price
+                
+                # Savings percentage
+                savings_el = soup.select_one('.apex-savings-percentage')
+                if savings_el:
+                    savings_text = savings_el.text.strip()
+                    # e.g. "-90%" → 90
+                    import re as savings_re
+                    pct = savings_re.search(r'(\d+)%', savings_text)
+                    if pct:
+                        book["savings_pct"] = int(pct.group(1))
         except Exception:
             pass  # keep original price if product page fails
     

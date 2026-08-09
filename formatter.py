@@ -29,6 +29,17 @@ def format_report(books: list[dict[str, Any]], new_count: int,
         author = book.get("author", "")
         url = book.get("url", "")
         
+        # Build savings info: "was $19.99, 90% off"
+        savings = ""
+        list_price = book.get("list_price")
+        savings_pct = book.get("savings_pct")
+        if list_price and savings_pct:
+            savings = f" ~~was ${list_price:.2f}~~ \\({savings_pct}% off\\)"
+        elif list_price:
+            savings = f" ~~was ${list_price:.2f}~~"
+        elif savings_pct:
+            savings = f" \\({savings_pct}% off\\)"
+        
         # Truncate long titles
         if len(title) > 80:
             title = title[:77] + "..."
@@ -37,6 +48,8 @@ def format_report(books: list[dict[str, Any]], new_count: int,
         if author:
             line += f" — _{author}_"
         line += f" — {price_str}"
+        if savings:
+            line += f" {savings}"
         if url:
             line += f" — [Link]({url})"
         lines.append(line)
