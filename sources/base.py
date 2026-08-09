@@ -23,6 +23,16 @@ class BaseScraper:
         ])
         self.delay = self.scraping_cfg.get("request_delay", 2)
         self.session = requests.Session()
+        
+        # Force US locale: Amazon uses cookies + headers to detect region.
+        # Without this, IP-based detection shows RON instead of USD.
+        self.session.cookies.update({
+            "session-id": "130-0000000-0000000",
+            "ubid-main": "130-0000000-0000000",
+            "lc-acbuk": "en_US",                     # force US locale
+            "i18n-prefs": "USD",                     # force USD currency
+            "session-id-time": "2082787201l",
+        })
         self._rotate_ua()
     
     def _rotate_ua(self) -> None:

@@ -9,9 +9,8 @@ sources:
     daily_deals: "/gp/browse.html?node=6165851011"
 
 filters:
-  # Max price in local currency (Amazon detects locale from IP).
-  # USD: 4.99, RON: ~23. Adjust to your currency.
-  max_price: 25.0
+  # Max price in USD (locale now forced to US).
+  max_price: 4.99
   
   # Genre keywords for title/description matching
   genres:

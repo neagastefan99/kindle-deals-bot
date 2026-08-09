@@ -255,9 +255,18 @@ class AmazonDealsScraper(BaseScraper):
     
     # ─── Orchestrator ───────────────────────────────────────────────
     
+    def _prime_us_session(self) -> None:
+        """Visit Amazon.com first to establish US session cookies.
+        Without this, Amazon detects Romanian IP and shows RON prices."""
+        print("  🌐 Priming US session on amazon.com...")
+        self.fetch_html(self.base_url + "/")
+    
     def scrape_all(self) -> list[dict[str, Any]]:
         """Scrape all configured sources. Tries API first, falls back to HTML.
         Deduplicates by ASIN."""
+        # Prime session with US locale
+        self._prime_us_session()
+        
         seen_asins: set[str] = set()
         all_books: list[dict[str, Any]] = []
         
