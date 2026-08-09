@@ -100,16 +100,24 @@ class AmazonDealsScraper(BaseScraper):
             if author_match:
                 author = author_match.group(1).strip()
             
-            # Price — use .a-offscreen inside .a-price
-            price_el = (
-                card.select_one('span.a-price span.a-offscreen') or
-                card.select_one('span.a-offscreen') or
-                card.select_one('span.a-price-whole')
-            )
+            # Price — prioritize "Or $X.XX to buy" over KU $0.00
             price = None
-            if price_el:
-                price_text = price_el.get("aria-label") or price_el.text
-                price = self._clean_price(price_text)
+            
+            # First, check for the non-KU purchase price: "Or $X.XX to buy"
+            buy_match = re.search(r"Or\s+\$?(\d+\.?\d*)\s+to\s+buy", raw_text, re.IGNORECASE)
+            if buy_match:
+                price = self._clean_price(buy_match.group(1))
+            
+            # Fall back to .a-offscreen price if "Or buy" not found or failed
+            if price is None:
+                price_el = (
+                    card.select_one('span.a-price span.a-offscreen') or
+                    card.select_one('span.a-offscreen') or
+                    card.select_one('span.a-price-whole')
+                )
+                if price_el:
+                    price_text = price_el.get("aria-label") or price_el.text
+                    price = self._clean_price(price_text)
             
             # URL
             link_el = card.select_one('a.a-link-normal[href*="/dp/"]') or card.select_one('h2 a')
