@@ -1,0 +1,46 @@
+# Kindle Deals Bot Configuration
+
+sources:
+  amazon:
+    base_url: "https://www.amazon.com"
+    sff_monthly_deals: "/b?ie=UTF8&node=17474490011"
+    sff_todays_deals: "/Science-Fiction-Fantasy-Todays-Deals/s?rh=n:668010011,p_n_deal_type:23566064011"
+    sff_best_sellers: "/Best-Sellers-Kindle-Store-Science-Fiction-Fantasy/zgbs/digital-text/668010011"
+    daily_deals: "/gp/browse.html?node=6165851011"
+
+filters:
+  # Max price in local currency (Amazon detects locale from IP).
+  # USD: 4.99, RON: ~23. Adjust to your currency.
+  max_price: 25.0
+  
+  # Genre keywords for title/description matching
+  genres:
+    - fantasy
+    - science fiction
+    - sci-fi
+    - epic fantasy
+    - urban fantasy
+    - space opera
+    - cyberpunk
+    - dystopian
+    - post-apocalyptic
+    - sword and sorcery
+    - grimdark
+    - progression fantasy
+    - litrpg
+    - gamelit
+    - dungeon
+    - romantasy
+    - paranormal
+    - supernatural
+  
+  # Tracked authors (case-insensitive partial match on author name)
+  tracked_authors: []
+  # Example: tracked_authors: ["Brandon Sanderson", "Joe Abercrombie", "N.K. Jemisin"]
+
+scraping:
+  request_delay: 2        # seconds between requests
+  user_agents:
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    - "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
+  max_books_per_source: 50

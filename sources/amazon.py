@@ -1,0 +1,275 @@
+"""Amazon Kindle deals scraper for Science Fiction & Fantasy.
+
+Uses a dual approach:
+1. Back-end API scraping (internal JSON endpoints — fast, reliable)
+2. HTML DOM parsing (fallback when APIs change)
+"""
+
+import json
+import re
+from typing import Any
+from urllib.parse import urljoin
+
+from sources.base import BaseScraper
+
+
+class AmazonDealsScraper(BaseScraper):
+    """Scrapes Amazon Kindle deal pages for SFF books."""
+    
+    # Known Amazon internal API patterns (discovered via browser DevTools).
+    # Update these after Task 5b discovery session.
+    API_PATTERNS: list[str] = []
+    
+    def __init__(self, config: dict[str, Any]):
+        super().__init__(config)
+        amz = config["sources"]["amazon"]
+        self.base_url = amz["base_url"]
+        self.deal_urls = [
+            urljoin(self.base_url, amz["sff_todays_deals"]),
+            urljoin(self.base_url, amz["sff_monthly_deals"]),
+        ]
+        self.max_books = config["scraping"].get("max_books_per_source", 50)
+    
+    @staticmethod
+    def _extract_asin(url: str) -> str | None:
+        """Extract ASIN from Amazon product URL."""
+        m = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", url)
+        return m.group(1) if m else None
+    
+    @staticmethod
+    def _clean_price(raw: str) -> float | None:
+        """Parse Amazon price strings like '$2.99' or 'Kindle Price: $3.99'."""
+        cleaned = re.sub(r"[^\d.]", "", raw)
+        try:
+            return round(float(cleaned), 2)
+        except ValueError:
+            return None
+    
+    @staticmethod
+    def _clean_text(text: str) -> str:
+        return " ".join(text.split()).strip()
+    
+    # ─── HTML DOM scraping (fallback) ─────────────────────────────────
+    
+    def scrape_deals_page(self, url: str) -> list[dict[str, Any]]:
+        """Scrape a single Amazon deals listing page via HTML parsing."""
+        soup = self.fetch_html(url)
+        if not soup:
+            return []
+        
+        books = []
+        card_selectors = [
+            'div[data-asin]',
+            'div[data-component-type="s-search-result"]',
+            'li[data-asin]',
+        ]
+        
+        cards = []
+        for sel in card_selectors:
+            cards = soup.select(sel)
+            if cards:
+                break
+        
+        for card in cards[:self.max_books]:
+            asin = card.get("data-asin", "")
+            if not asin:
+                continue
+            
+            # Title
+            title_el = (
+                card.select_one("h2 a span") or
+                card.select_one("h2 a") or
+                card.select_one(".a-link-normal span.a-text-normal")
+            )
+            title = self._clean_text(title_el.text) if title_el else ""
+            if not title:
+                continue
+            
+            # Author / byline
+            author_el = (
+                card.select_one(".a-row.a-size-base.a-color-secondary") or
+                card.select_one(".a-size-base.a-link-normal")
+            )
+            author = self._clean_text(author_el.text) if author_el else ""
+            
+            # Price
+            price_el = (
+                card.select_one(".a-price .a-offscreen") or
+                card.select_one(".a-price-whole")
+            )
+            price = None
+            if price_el:
+                price_text = price_el.get("aria-label", price_el.text)
+                price = self._clean_price(price_text)
+            
+            # URL
+            link_el = card.select_one("a.a-link-normal[href*='/dp/']") or card.select_one("h2 a")
+            url = ""
+            if link_el and link_el.get("href"):
+                url = urljoin(self.base_url, link_el["href"])
+                url = re.sub(r"/ref=.*", "", url)
+            
+            if not url:
+                url = f"{self.base_url}/dp/{asin}"
+            
+            books.append({
+                "asin": asin,
+                "title": title,
+                "author": author,
+                "price": price,
+                "url": url,
+                "from_sff_page": True,
+            })
+        
+        return books
+    
+    def scrape_best_sellers(self, url: str) -> list[dict[str, Any]]:
+        """Scrape the SFF Best Sellers page — tries API first, falls back to HTML."""
+        # Try API first
+        books = self.scrape_api(url)
+        if books:
+            return books
+        
+        # Fall back to HTML DOM parsing
+        soup = self.fetch_html(url)
+        if not soup:
+            return []
+        
+        books = []
+        items = soup.select('div.zg-grid-general-faceout')[:self.max_books]
+        
+        for item in items:
+            # Title
+            title_el = item.select_one('div._cDEzb_p13n-sc-css-line-clamp-1_1Fn1y')
+            title = self._clean_text(title_el.text) if title_el else ""
+            if not title:
+                continue
+            
+            # Author
+            author_el = item.select_one('div.a-row.a-size-small') or item.select_one('span.a-size-small.a-color-secondary')
+            author = self._clean_text(author_el.text) if author_el else ""
+            
+            # Price — Amazon's CSS class suffixes are dynamic (hash-based),
+            # so we use a prefix match
+            price_el = (
+                item.select_one('span[class*="_p13n-sc-price"]') or
+                item.select_one('span.a-color-price') or
+                item.select_one('span.a-price-whole') or
+                item.select_one('span.a-price .a-offscreen')
+            )
+            price = self._clean_price(price_el.text) if price_el else None
+            
+            # URL
+            link_el = item.select_one('a[href*="/dp/"]')
+            url = ""
+            if link_el:
+                url = urljoin(self.base_url, link_el["href"])
+                url = re.sub(r"/ref=.*", "", url)
+            
+            asin = self._extract_asin(url) or ""
+            
+            books.append({
+                "asin": asin,
+                "title": title,
+                "author": author,
+                "price": price,
+                "url": url,
+                "from_sff_page": True,
+            })
+        
+        return books
+    
+    def scrape_api(self, url: str) -> list[dict[str, Any]]:
+        """Try to fetch deals via Amazon's internal JSON endpoints.
+        Returns empty list if API approach fails — caller falls back to HTML."""
+        # Attempt 1: Try known API patterns first
+        for api_url in self.API_PATTERNS:
+            try:
+                data = self.fetch_json(api_url)
+                if data:
+                    return self._parse_api_response(data)
+            except Exception:
+                continue
+        
+        # Attempt 2: Try to extract embedded JSON from the page
+        # (server-side rendered data in <script> tags — common in modern SPAs)
+        soup = self.fetch_html(url)
+        if soup:
+            for script in soup.select('script[type="application/json"], script#__NEXT_DATA__'):
+                try:
+                    text = script.string or ""
+                    if not text.strip():
+                        continue
+                    data = json.loads(text)
+                    books = self._parse_api_response(data)
+                    if books:
+                        return books
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    continue
+        
+        return []
+    
+    def _parse_api_response(self, data: dict | list) -> list[dict[str, Any]]:
+        """Walk a JSON response from Amazon's internal API and extract book entries.
+        Amazon's API structure varies — this method tries multiple common paths."""
+        books: list[dict[str, Any]] = []
+        
+        def walk(obj: Any, depth: int = 0) -> None:
+            if depth > 10 or len(books) >= self.max_books:
+                return
+            if isinstance(obj, dict):
+                # Common Amazon JSON patterns: objects with asin + title
+                if "asin" in obj and "title" in obj:
+                    asin = str(obj.get("asin", ""))
+                    title = str(obj.get("title", "")).strip()
+                    if title and asin:
+                        price = None
+                        if "price" in obj:
+                            price = self._clean_price(str(obj["price"]))
+                        books.append({
+                            "asin": asin,
+                            "title": title,
+                            "author": str(obj.get("author", obj.get("byline", ""))),
+                            "price": price,
+                            "url": f"{self.base_url}/dp/{asin}",
+                            "from_sff_page": True,
+                        })
+                    return
+                for v in obj.values():
+                    walk(v, depth + 1)
+            elif isinstance(obj, list):
+                for item in obj:
+                    walk(item, depth + 1)
+        
+        walk(data)
+        return books
+    
+    # ─── Orchestrator ───────────────────────────────────────────────
+    
+    def scrape_all(self) -> list[dict[str, Any]]:
+        """Scrape all configured sources. Tries API first, falls back to HTML.
+        Deduplicates by ASIN."""
+        seen_asins: set[str] = set()
+        all_books: list[dict[str, Any]] = []
+        
+        for url in self.deal_urls:
+            print(f"  Scraping: {url}")
+            
+            # 1. Try back-end API first (fast, reliable)
+            print(f"    Trying API...")
+            books = self.scrape_api(url)
+            if books:
+                print(f"    ✓ API returned {len(books)} books")
+            else:
+                # 2. Fall back to HTML DOM parsing
+                print(f"    API empty, falling back to HTML...")
+                books = self.scrape_deals_page(url)
+                print(f"    HTML returned {len(books)} books")
+            
+            for book in books:
+                if book["asin"] and book["asin"] not in seen_asins:
+                    seen_asins.add(book["asin"])
+                    all_books.append(book)
+            print(f"    Total unique: {len(all_books)}")
+        
+        return all_books
