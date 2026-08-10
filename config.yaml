@@ -33,9 +33,16 @@ filters:
     - paranormal
     - supernatural
   
-  # Tracked authors (case-insensitive partial match on author name)
-  tracked_authors: []
-  # Example: tracked_authors: ["Brandon Sanderson", "Joe Abercrombie", "N.K. Jemisin"]
+  # Tracked authors (case-insensitive, supports fuzzy: "Sanderson" matches "Brandon Sanderson")
+  tracked_authors:
+    - Stephen King
+    - Robin Hobb
+    - Brandon Sanderson
+    - Pierce Brown
+    - Joe Abercrombie
+    - Isaac Asimov
+    - James S.A. Corey
+    - John Gwynne
 
 scraping:
   request_delay: 2        # seconds between requests
