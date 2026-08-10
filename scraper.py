@@ -154,29 +154,35 @@ def main() -> None:
     new_count = 0
     dropped_count = 0
     report_books = []
-
+    
     for book in filtered:
         asin = book.get("asin", "")
         title = book.get("title", "")
         author = book.get("author", "")
         price = book.get("price")
         url = book.get("url", "")
-
+        
         if not asin or not title:
             continue
-
+        
         is_new = storage.is_new(asin)
         better_price = storage.is_better_price(asin, price or 999.99)
-
-        if is_new or better_price:
+        
+        # Always include in the daily report
+        report_books.append(book)
+        
+        # Track in storage: mark as seen, detect new/price-drop for stats
+        if is_new:
+            new_count += 1
             storage.mark_seen(asin, title, price or 0.0, author, url)
-            report_books.append(book)
-            if is_new:
-                new_count += 1
-                print(f"  🆕 NEW: {title} (${price})", file=sys.stderr)
-            elif better_price:
-                dropped_count += 1
-                print(f"  📉 DROP: {title} (${price})", file=sys.stderr)
+            print(f"  🆕 NEW: {title} (${price})", file=sys.stderr)
+        elif better_price:
+            dropped_count += 1
+            storage.mark_seen(asin, title, price or 0.0, author, url)
+            print(f"  📉 DROP: {title} (${price})", file=sys.stderr)
+        else:
+            # Still update last_seen timestamp without changing price
+            storage.mark_seen(asin, title, price or 0.0, author, url)
 
     # --- Download covers for reported books (capped) ---
     if covers_enabled:
