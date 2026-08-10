@@ -32,6 +32,24 @@ filters:
     - romantasy
     - paranormal
     - supernatural
+    # Horror sub-genres
+    - psychological horror
+    - supernatural horror
+    - gothic horror
+    - cosmic horror
+    - slasher horror
+    - body horror
+    - paranormal horror
+    - dark fantasy
+    # Thriller sub-genres
+    - psychological thriller
+    - supernatural thriller
+    - crime thriller
+    - legal thriller
+    - spy thriller
+    - techno-thriller
+    - medical thriller
+    - political thriller
   
   # Tracked authors (case-insensitive, supports fuzzy: "Sanderson" matches "Brandon Sanderson")
   tracked_authors:
