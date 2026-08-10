@@ -43,3 +43,8 @@ scraping:
     - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     - "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
   max_books_per_source: 50
+
+covers:
+  enabled: true
+  max_count: 10          # Telegram media group limit; cap to avoid spam
+  dir: "data/covers"     # relative to project root

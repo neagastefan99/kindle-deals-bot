@@ -2,6 +2,7 @@
 """Kindle Deals Bot — scrapes Amazon SFF deals and prints a Markdown report."""
 
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -25,17 +26,55 @@ def load_config() -> dict:
         return yaml.safe_load(f)
 
 
+def download_cover(scraper: AmazonDealsScraper, cover_url: str, asin: str, covers_dir: Path) -> str | None:
+    """Download a cover image and return the absolute local path, or None on failure."""
+    if not cover_url or not asin:
+        return None
+    try:
+        covers_dir.mkdir(parents=True, exist_ok=True)
+        dest = covers_dir / f"{asin}.jpg"
+        resp = scraper.session.get(cover_url, timeout=15, impersonate="chrome124")
+        resp.raise_for_status()
+        dest.write_bytes(resp.content)
+        return str(dest.resolve())
+    except Exception as e:
+        print(f"  [WARN] Cover download failed for {asin}: {e}", file=sys.stderr)
+        return None
+
+
+def cleanup_old_covers(covers_dir: Path, days: int = 7) -> None:
+    """Remove cover images older than `days` to avoid disk bloat."""
+    if not covers_dir.exists():
+        return
+    cutoff = time.time() - (days * 86400)
+    for f in covers_dir.iterdir():
+        if f.is_file() and f.stat().st_mtime < cutoff:
+            try:
+                f.unlink()
+            except OSError:
+                pass
+
+
 def main() -> None:
     config = load_config()
     storage = Storage(PROJECT_ROOT / "data")
     book_filter = BookFilter(config)
-    
+
+    # Covers config
+    covers_cfg = config.get("covers", {})
+    covers_enabled = covers_cfg.get("enabled", True)
+    covers_dir = PROJECT_ROOT / covers_cfg.get("dir", "data/covers")
+    max_covers = covers_cfg.get("max_count", 10)
+
+    # Clean old covers at start
+    cleanup_old_covers(covers_dir)
+
     # --- Scrape ---
     print("🔍 Scraping Amazon Kindle SFF deals...", file=sys.stderr)
     scraper = AmazonDealsScraper(config)
     all_books = scraper.scrape_all()
     print(f"  Deal books scraped: {len(all_books)}", file=sys.stderr)
-    
+
     # Also scrape Best Sellers for trending books
     print("🔍 Scraping Amazon SFF Best Sellers...", file=sys.stderr)
     bs_url = scraper.base_url + config["sources"]["amazon"]["sff_best_sellers"]
@@ -50,18 +89,18 @@ def main() -> None:
                 all_books.append(book)
     except Exception as e:
         print(f"  [WARN] Best sellers scrape failed: {e}", file=sys.stderr)
-    
+
     print(f"  Total combined: {len(all_books)} books", file=sys.stderr)
-    
+
     if not all_books:
         print(format_empty_report())
         storage.log_run({"scraped": 0, "filtered": 0, "new": 0, "price_drops": 0, "error": "No books scraped"})
         return
-    
+
     # --- Filter ---
     filtered = book_filter.apply(all_books)
     print(f"  After filtering: {len(filtered)} books", file=sys.stderr)
-    
+
     # --- Enrich with accurate product-page prices ---
     # Deal page prices can differ from the actual product page (KU vs buy price,
     # region-specific deals, dynamic pricing). Visit each product page for the
@@ -82,14 +121,14 @@ def main() -> None:
                         book["price"] = real_price
                         if old != real_price:
                             print(f"  💵 {book['title'][:50]}... ${old} → ${real_price}", file=sys.stderr)
-                
+
                 # List price (the regular/print price before discount)
                 basis = soup.select_one('.apex-basisprice-value .a-offscreen')
                 if basis and basis.text.strip():
                     list_price = scraper._clean_price(basis.text.strip())
                     if list_price and list_price > 0:
                         book["list_price"] = list_price
-                
+
                 # Savings percentage
                 savings_el = soup.select_one('.apex-savings-percentage')
                 if savings_el:
@@ -99,31 +138,36 @@ def main() -> None:
                     pct = savings_re.search(r'(\d+)%', savings_text)
                     if pct:
                         book["savings_pct"] = int(pct.group(1))
+
+                # Extract cover URL from product page
+                cover_url = scraper.extract_cover_url(soup)
+                if cover_url:
+                    book["cover_url"] = cover_url
         except Exception:
             pass  # keep original price if product page fails
-    
+
     # Re-filter with accurate prices (some may now exceed max_price)
     filtered = book_filter.apply(filtered)
     print(f"  After price enrichment: {len(filtered)} books", file=sys.stderr)
-    
+
     # --- Deduplicate & track ---
     new_count = 0
     dropped_count = 0
     report_books = []
-    
+
     for book in filtered:
         asin = book.get("asin", "")
         title = book.get("title", "")
         author = book.get("author", "")
         price = book.get("price")
         url = book.get("url", "")
-        
+
         if not asin or not title:
             continue
-        
+
         is_new = storage.is_new(asin)
         better_price = storage.is_better_price(asin, price or 999.99)
-        
+
         if is_new or better_price:
             storage.mark_seen(asin, title, price or 0.0, author, url)
             report_books.append(book)
@@ -133,12 +177,25 @@ def main() -> None:
             elif better_price:
                 dropped_count += 1
                 print(f"  📉 DROP: {title} (${price})", file=sys.stderr)
-    
+
+    # --- Download covers for reported books (capped) ---
+    if covers_enabled:
+        for book in report_books[:max_covers]:
+            cover_url = book.get("cover_url")
+            asin = book.get("asin", "")
+            if cover_url and asin:
+                cover_path = download_cover(scraper, cover_url, asin, covers_dir)
+                if cover_path:
+                    book["cover_path"] = cover_path
+    else:
+        for book in report_books:
+            book.pop("cover_path", None)
+
     # --- Format & output ---
     print(f"  Reporting: {new_count} new + {dropped_count} price drops", file=sys.stderr)
     report = format_report(report_books, new_count, dropped_count)
     print(report)
-    
+
     # --- Log run ---
     storage.log_run({
         "scraped": len(all_books),

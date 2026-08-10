@@ -48,7 +48,41 @@ class AmazonDealsScraper(BaseScraper):
     @staticmethod
     def _clean_text(text: str) -> str:
         return " ".join(text.split()).strip()
-    
+
+    @staticmethod
+    def extract_cover_url(soup) -> str | None:
+        """Extract the main cover image URL from an Amazon product page.
+
+        Verified live on 2026-08-10: the main cover is in
+        #main-image-container img.a-dynamic-image (also id='landingImage').
+        The src URL contains size modifiers like ._SY445_SX342_QL70_ML2_.jpg;
+        stripping them yields the original full-size image.
+        """
+        import re as _re
+
+        for selector in [
+            '#main-image-container img.a-dynamic-image',
+            '#landingImage',
+            '#imgBlkFront',
+            '#ebooksImgBlkFront',
+            'img.a-dynamic-image',
+        ]:
+            el = soup.select_one(selector)
+            if el and el.get('src'):
+                url = el['src']
+                if 'm.media-amazon.com/images/I/' in url:
+                    # Strip size modifiers to get full-size image
+                    # e.g. .../51wnPeiPpAL._SY445_SX342_QL70_ML2_.jpg -> .../51wnPeiPpAL.jpg
+                    url = _re.sub(r'\._[A-Z0-9,%_]+_\.jpg$', '.jpg', url)
+                    return url
+
+        # Fallback: any img tag pointing to Amazon image CDN (skip SVG/logos)
+        for img in soup.select('img[src*="m.media-amazon.com/images/I/"]'):
+            src = img['src']
+            if src.endswith('.jpg') and 'sticker' not in src and 'logo' not in src:
+                return src
+        return None
+
     # ─── HTML DOM scraping (fallback) ─────────────────────────────────
     
     def scrape_deals_page(self, url: str) -> list[dict[str, Any]]:
