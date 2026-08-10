@@ -34,29 +34,26 @@ class BookFilter:
                 return True
         return False
     
-    def matches_author(self, author: str) -> bool:
-        """Check if author matches any tracked authors.
-        Always returns True when no authors are tracked.
-        Supports fuzzy matching: a tracked author matches if any of its
-        name tokens appear in the book author string, and vice versa.
-        e.g. \"Sanderson\" matches \"Brandon Sanderson\", 
-             \"Robin Hobb\" matches \"Hobb, Robin\"."""
+    def is_tracked_author(self, author: str) -> bool:
+        """Check if author is in the tracked list (fuzzy match).
+        Used to promote tracked authors in the report without excluding others."""
         if not self.tracked_authors:
-            return True  # no filter active
+            return False
         
         author_lower = author.lower()
         author_tokens = set(author_lower.replace(",", " ").split())
         
         for tracked in self.tracked_authors:
             tracked_tokens = set(tracked.split())
-            # Match if any tracked token is in the author (fuzzy)
             if tracked_tokens & author_tokens:
                 return True
-            # Also match substring (e.g. "Asimov" in "Isaac Asimov")
             if tracked in author_lower or author_lower in tracked:
                 return True
-        
         return False
+    
+    def matches_author(self, author: str) -> bool:
+        """Always returns True — tracked authors get promoted, not exclusive."""
+        return True
     
     def apply(self, books: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Filter a list of books. Returns only matches."""

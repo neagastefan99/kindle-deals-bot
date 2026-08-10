@@ -168,6 +168,10 @@ def main() -> None:
         is_new = storage.is_new(asin)
         better_price = storage.is_better_price(asin, price or 999.99)
         
+        # Tag tracked authors for promotion in report
+        if book_filter.is_tracked_author(author):
+            book["tracked_author"] = True
+        
         # Always include in the daily report
         report_books.append(book)
         
