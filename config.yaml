@@ -70,6 +70,6 @@ scraping:
   max_books_per_source: 50
 
 covers:
-  enabled: false
-  max_count: 10
-  dir: "data/covers"
+  enabled: true
+  max_count: 10          # Telegram media group limit; cap to avoid spam
+  dir: "data/covers"     # relative to project root
