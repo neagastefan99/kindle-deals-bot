@@ -63,7 +63,12 @@ filters:
     - John Gwynne
 
 scraping:
-  request_delay: 2        # seconds between requests
+  # engine: curl_cffi (default, battle-tested) or lightpanda (batch browser, ~6x faster)
+  engine: lightpanda
+  lightpanda_bin: "/tmp/lightpanda-spike/lightpanda"
+  lightpanda_cookies: "/tmp/lightpanda-cookies.json"
+  lightpanda_wait_ms: 6000
+  request_delay: 2        # seconds between requests (curl_cffi engine)
   user_agents:
     - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     - "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
