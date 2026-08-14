@@ -107,33 +107,21 @@ def main() -> None:
     # ── Stage 3: enrichment ────────────────────────────────────────
     product_urls = [b["url"] for b in filtered if b.get("url")]
     soups = scraper.prefetch(product_urls)
-    enriched: list[dict] = []
-    for book in filtered:
-        soup = soups.get(book.get("url", ""))
-        if not soup:
-            log("no_product_page", book)
-            continue
-        info = scraper.parse_product_page(soup)
-        if info.get("is_ebook") is False:
-            log("edition", book, {"is_ebook": info.get("is_ebook")})
-            book["is_ebook"] = False
-            continue
-        if not info.get("price"):
-            log("no_live_price", book)
-            continue
-        book["price"] = info["price"]
-        if info.get("list_price"):
-            book["list_price"] = info["list_price"]
-        if info.get("savings_pct") is not None:
-            book["savings_pct"] = info["savings_pct"]
-        if info.get("cover_url"):
-            book["cover_url"] = info["cover_url"]
-        if "available" in info:
-            book["available"] = info["available"]
-        if info.get("preorder"):
-            book["preorder"] = True
-        enriched.append(book)
 
+    # Region check (t_13047664) — mirror scraper.py main()
+    from scraper import detect_region
+    for soup in soups.values():
+        if soup is None:
+            continue
+        region, evidence = detect_region(str(soup))
+        if region == "non-US":
+            print(f"  ⚠️ REGION WARNING: enrichment pages resolved to {evidence} — "
+                  f"prices may differ from the US storefront the user sees!",
+                  file=sys.stderr)
+            break
+
+    from scraper import enrich_books
+    enriched = enrich_books(filtered, soups, scraper)
     filtered = enriched
 
     # ── Stage 4: edition guard ─────────────────────────────────────
