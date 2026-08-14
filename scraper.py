@@ -70,6 +70,13 @@ def cleanup_old_covers(covers_dir: Path, days: int = 7) -> None:
                 pass
 
 
+def is_reportable(book: dict) -> bool:
+    """Availability gate (spike t_e934a2a3 §6b): drop books whose product
+    page says the Kindle edition is currently unavailable or is a pre-order
+    (not buyable/instantly downloadable right now). Unknown → keep."""
+    return book.get("available", True) is not False and not book.get("preorder", False)
+
+
 def main() -> None:
     config = load_config()
     storage = Storage(PROJECT_ROOT / "data")
@@ -135,14 +142,27 @@ def main() -> None:
             book["savings_pct"] = info["savings_pct"]
         if info.get("cover_url"):
             book["cover_url"] = info["cover_url"]
+        if "available" in info:
+            book["available"] = info["available"]
+        if info.get("preorder"):
+            book["preorder"] = True
+
+    # --- Availability gate: drop books unavailable on Kindle / pre-orders ---
+    avail_before = len(filtered)
+    filtered = [b for b in filtered if is_reportable(b)]
+    avail_dropped = avail_before - len(filtered)
+    if avail_dropped:
+        print(f"  ❌ Availability: dropped {avail_dropped} unavailable/pre-order book(s)", file=sys.stderr)
 
     # Re-filter with accurate prices (some may now exceed max_price)
-    filtered = book_filter.apply(filtered)
+    # and the BookBub limited-time gate (only real >=50% discounts).
+    filtered = book_filter.apply(filtered, require_discount=True)
     print(f"  After price enrichment: {len(filtered)} books", file=sys.stderr)
 
     # --- Deduplicate & track ---
     new_count = 0
     dropped_count = 0
+    suppressed_count = 0
     report_books = []
 
     for book in filtered:
@@ -160,6 +180,17 @@ def main() -> None:
 
         if book_filter.is_tracked_author(author):
             book["tracked_author"] = True
+
+        # BookBub-inspired gates: never re-surface a book at a WORSE price
+        # than its best within the last 30 days, and drop books that have sat
+        # at this price for >14 days (permanent markdown, not a limited-time
+        # deal). Gated books are still recorded (history updates), just not
+        # reported as a deal.
+        if not storage.should_report(asin, price or 0.0):
+            storage.mark_seen(asin, title, price or 0.0, author, url)
+            suppressed_count += 1
+            print(f"  ⏸ GATED: {title} (${price})", file=sys.stderr)
+            continue
 
         report_books.append(book)
 
