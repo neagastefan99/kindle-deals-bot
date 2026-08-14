@@ -83,7 +83,7 @@ scraping:
   lightpanda_retry_backoff: [5, 15, 30]   # seconds between retry attempts
   # debug: true → per-URL failure dumps in the log (normal runs summarize per batch)
   debug: false
-  request_delay: 2        # seconds between requests (curl_cffi engine)
+  request_delay: 4        # seconds between requests (curl_cffi engine); 4s + jitter 0.5-1.5x = 2-6s — raised from 2s to dodge Amazon 503 rate-limit
   user_agents:
     - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     - "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15"
