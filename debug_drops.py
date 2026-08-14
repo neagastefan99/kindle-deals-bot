@@ -58,7 +58,7 @@ def main() -> None:
             "title": book.get("title", "")[:70],
             "author": book.get("author", ""),
         }
-        for k in ("price", "list_price", "savings_pct", "is_ebook",
+        for k in ("price", "list_price", "list_source", "savings_pct", "is_ebook",
                   "available", "preorder", "url"):
             row[k] = book.get(k)
         if extra:
@@ -136,6 +136,18 @@ def main() -> None:
         avail_kept.append(book)
     filtered = avail_kept
 
+    # ── Stage 5.5: history-based deal fallback (t_ccbd16c0) ────────
+    # The ebook Digital List Price is only server-rendered for ~1 in 7
+    # pages, so most real deals have no savings_pct to pass the >=50% gate.
+    # A book whose page exposes no digital list (savings_pct AND list_price
+    # unset) is flagged list_source="history" when under the cap — the
+    # best-price-30d / anti-stale storage gates in Stage 7 still decide
+    # whether it's actually a fresh, at-or-below-best drop.
+    for book in filtered:
+        if (book.get("savings_pct") is None and book.get("list_price") is None
+                and book_filter.matches_price(book.get("price"))):
+            book["list_source"] = "history"
+
     # ── Stage 6: post-enrichment re-filter (discount gate) ─────────
     refiltered: list[dict] = []
     for book in filtered:
@@ -143,7 +155,7 @@ def main() -> None:
         if not book_filter.matches_price(price):
             log("price_cap_post", book, {"cap": book_filter.max_price})
             continue
-        if not book_filter.matches_discount(book.get("savings_pct")):
+        if not book_filter.matches_discount_or_history(book):
             log("savings_lt_50", book, {"min": book_filter.min_savings_pct})
             continue
         refiltered.append(book)
