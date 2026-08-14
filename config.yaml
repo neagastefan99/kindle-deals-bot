@@ -12,6 +12,10 @@ filters:
   # Max price in USD (locale now forced to US).
   max_price: 4.99
   
+  # BookBub-style limited-time gate: only surface books at least this % off
+  # their list price (a real discount, not just a cheap price).
+  min_savings_pct: 50
+  
   # Genre keywords for title/description matching
   genres:
     - fantasy
