@@ -131,6 +131,11 @@ def main() -> None:
         if not soup:
             continue
         info = scraper.parse_product_page(soup)
+        if info.get("is_ebook") is False:
+            # Edition guard (§6c): ASIN is NOT the Kindle ebook edition
+            # (print/audiobook-only listing) — drop, don't report its price.
+            book["is_ebook"] = False
+            continue
         if info.get("price"):
             old = book.get("price")
             book["price"] = info["price"]
@@ -146,6 +151,13 @@ def main() -> None:
             book["available"] = info["available"]
         if info.get("preorder"):
             book["preorder"] = True
+
+    # --- Edition guard (§6c): drop non-Kindle-ebook ASINs ---
+    guard_before = len(filtered)
+    filtered = [b for b in filtered if b.get("is_ebook", True)]
+    guard_dropped = guard_before - len(filtered)
+    if guard_dropped:
+        print(f"  🚫 Edition guard: dropped {guard_dropped} non-Kindle-ebook listing(s)", file=sys.stderr)
 
     # --- Availability gate: drop books unavailable on Kindle / pre-orders ---
     avail_before = len(filtered)
