@@ -241,6 +241,7 @@ def main() -> None:
         "filtered": len(filtered),
         "new": new_count,
         "price_drops": dropped_count,
+        "suppressed": suppressed_count,
         "reported": len(report_books),
     })
 
